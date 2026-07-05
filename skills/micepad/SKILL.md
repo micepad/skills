@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires the Micepad CLI binary (`micepad`) installed and authenticated.
 metadata:
   author: Micepad Team
-  version: 0.4.7
+  version: 0.4.9
   homepage: https://github.com/micepad/skills
 invocable: true
 argument-hint: "[action] [args...]"
@@ -62,6 +62,20 @@ You are an experienced event operations partner who manages events through the `
 5. **Capture IDs from output.** Commands return prefixed IDs (`frm_abc12`, `cmp_xyz99`, `pax_abc123`). Parse and reuse them.
 6. **Never expose credentials, tokens, or session data.**
 7. **Never auto-import.** No `--yes`, no one-shot import. Always the multi-step workflow. See **Importing Participants**.
+8. **Verify writes — error messages can lie.** Mutations (especially `forms add-field`) may print "An error occurred. Please try again." even when the write succeeded server-side. Never blindly retry a failed-looking mutation: re-read state first (e.g. `forms fields ID`), or you will create duplicate fields. *(Field note: Gale, 2026-07-05, CLI 0.4.9)*
+9. **Global flags go after the subcommand.** `micepad --account=X registration show` gets misparsed as `help`; use `micepad registration show --account=X` instead. Same for `--json`. *(Field note: Gale, 2026-07-05)*
+
+## Known Limitations — Requires Studio UI
+
+The CLI cannot do everything. When you hit one of these, don't thrash — send the user to Studio (studio.micepad.co) with precise click instructions, then continue via CLI. *(All field-tested by Gale, 2026-07-05, CLI 0.4.9.)*
+
+| Task | Why the CLI can't | Workaround |
+|------|-------------------|------------|
+| Create a form | No `forms create` command — and new events may have **no default form at all** (`forms list` returns empty) | User creates the empty form in Studio; CLI then handles everything else (fields, options, order, publish) |
+| Delete a form | No `forms delete` command | Studio UI |
+| Paragraph field body text | Paragraph fields render **only** a rich-text block on the public form — their label and instruction are never displayed. The body is edited via Studio's WYSIWYG only | Add and position the paragraph field via CLI; user pastes the text in Studio |
+| Rename system field labels (`first_name`, `last_name`, `email`, `company_name`, `job_title`, `contact_phone`) | Labels are managed by platform i18n and localize per visitor language; `update-field --label` reports success but is a **silent no-op** | For semantic changes (e.g. "Affiliation" instead of "Company"), hide the system field (`--visible false`) and add a custom field instead |
+| Copy a form across events | Forms are event-scoped; `forms duplicate` cannot see forms from other events (`Form not found`) | Rebuild field-by-field via CLI |
 
 ## Assess Before You Act
 
@@ -101,7 +115,10 @@ A participant has both. Example: "General Admission" reg type + "Speakers" and "
 
 ### Other Entities
 
-- **Forms** — registration forms with fields. Lifecycle: draft → published → unpublished.
+- **Forms** — two types (*added by Gale, 2026-07-05*):
+  - `registration` — public self-signup. Anyone with the link fills in the fields; each submission **creates a new participant**. For open events.
+  - `rsvp` — invited guests from a pre-loaded list respond attend/decline; submissions **update existing participants' RSVP status** (`confirmed` / `unconfirmed` / `declined` / `waitlisted` / `pending_approval`), no new participants created. For invite-only events, usually paired with an invitation campaign.
+  - Lifecycle for both: draft → published → unpublished. **Draft forms render nothing at their public URL** — publish before verifying visually.
 - **Badges** — printable name badge templates linked to groups. Ordered fields.
 - **Campaigns** — email/WhatsApp messages built from sections. Recipients by status, group, or individual.
 - **QR Login Tokens** — time-limited kiosk/device access.
@@ -229,18 +246,35 @@ micepad forms unpublish frm_xxx                 # Close registration
 | `micepad groups list` / `create` / `show NAME` | `--name`, `--color` (gray/purple/blue/green/amber/red/indigo/pink) |
 | `micepad regtypes list` / `create` | `--name`, `--capacity`, `--default` |
 
+### Master Registration Settings
+
+Forms live inside a master registration window — individual form open/close dates must fall within it. If signups aren't working, check this **before** debugging the form. *(Added by Gale, 2026-07-05.)*
+
+| Command | Purpose |
+|---------|---------|
+| `micepad registration show` | Status, channel, open/close dates, guest limit, page visibility |
+| `micepad registration update` | `--status open/closed`, `--guest-limit unlimited/limited`, `--max-guests N`, `--page-visibility show/hide`, `--open_date/--open_time/--close_date/--close_time` |
+
 ### Forms
 | Command | Purpose |
 |---------|---------|
-| `micepad forms list` / `fields ID` / `settings ID` | Inspect |
+| `micepad forms list` / `show ID` / `fields ID` / `settings ID` / `responses ID` | Inspect |
+| `micepad forms field-types` | List all available field types |
 | `micepad forms add-field ID` | `--type`, `--label`, `--required` |
-| `micepad forms update-field ID SLUG` | `--options`, `--placeholder` |
-| `micepad forms reorder ID` / `update ID` | `--title`, `--subtitle`, `--description`, `--submit_label` |
-| `micepad forms publish ID` / `unpublish ID` / `url ID` | Lifecycle |
+| `micepad forms update-field ID VARIABLE` | `--label`, `--required`, `--visible`, `--placeholder`, `--instruction`, `--options` (comma-separated, for dropdown/radio/checkbox) |
+| `micepad forms remove-field ID VARIABLE` | Remove a field |
+| `micepad forms move-field ID VARIABLE --position=N` / `reorder ID` | Ordering |
+| `micepad forms update ID` | `--title`, `--subtitle`, `--description`, `--submit_label`, `--status`, `--opening_at`, `--closing_at` |
+| `micepad forms publish ID` / `unpublish ID` / `duplicate ID` / `url ID` | Lifecycle (duplicate is same-event only) |
 
-**Field types**: `company`, `job_title`, `country`, `dropdown`, `text`, `long_text`, `paragraph`
+**Field types** (39 as of CLI 0.4.9 — run `forms field-types` for the current list): identity (`first_name`, `last_name`, `full_name`, `email`, `phone`, `gender`, `date_of_birth`, `nationality`, `passport`), professional (`company`, `job_title`, `bio`, `headline`), inputs (`text`, `long_text`, `dropdown`, `radio`, `checkbox`, `number`, `date`, `time`, `country`, `address`, `url`, `file_upload`, `image`), needs (`dietary`, `accessibility`), consent (`consent`, `term_consent`, `captcha`), layout (`paragraph`, `divider`, `spacer`), social (`linkedin`, `twitter`, `instagram`, `facebook`, `youtube`). *(Expanded by Gale, 2026-07-05.)*
 
 **Important**: Default forms have hidden fields (company_name, job_title). Always `forms fields` first — unhide rather than duplicate.
+
+**Gotchas** *(field-tested by Gale, 2026-07-05)*:
+- If a field label was ever used elsewhere, the platform may auto-suffix the new field ("Company **2**", variable `company_2`). Check the label after `add-field` and fix with `update-field --label`.
+- `forms update --title` changes the **public** title; the internal form name shown in `forms list` stays unchanged (cosmetic, UI-only rename).
+- After any `add-field`/`update-field`, verify with `forms fields ID` — see Rule 8.
 
 ### Badges
 | Command | Purpose |
@@ -333,7 +367,7 @@ All `list` commands share these flags:
 | `--group=NAME` | Group filter (on `pax list`) | — |
 | `--type=TYPE` | Type filter (on `campaigns list`, `forms list`) | — |
 
-**`--json` is broken** — returns table format. Don't rely on it.
+**`--json` support is partial** — verified working on `forms fields` and `forms settings` (CLI 0.4.9, Gale 2026-07-05); some commands still return table format or plain text. Test per command before relying on it.
 
 ## Diagnostics
 
@@ -342,7 +376,10 @@ All `list` commands share these flags:
 | Auth errors | `micepad login` |
 | "No active event" | `micepad events use SLUG` |
 | Permission denied | `micepad whoami` — check role/plan |
-| Form not accepting signups | `micepad forms list` — published? |
+| Form not accepting signups | `micepad registration show` — master window open? Then `micepad forms list` — published? |
+| "An error occurred" on a mutation | The write may have succeeded anyway — re-read state (`forms fields ID`) before retrying, or you'll create duplicates |
+| Command misparsed as `help` | Global flags placed before the subcommand — move `--account` / `--json` after it |
+| Public form URL shows nothing | Form is still draft — publish first |
 | Campaign 0 recipients | Did you `add-recipients`? Does the status filter match actual participants? |
 | Kiosk won't scan | `micepad qrlogin list` — tokens valid and not expired? |
 | Numbers don't match | Compare `pax count --by group` vs `--by rsvp` vs `events stats` |
@@ -365,3 +402,8 @@ micepad -e dev pax list                  # One-off command against a different e
 micepad configure --url "wss://..."      # Update current env URL (legacy, prefer env commands)
 export MICEPAD_URL="ws://localhost:3000/terminal"             # Override via env var
 ```
+
+## Changelog
+
+- **2026-07-05 — Gale** (field-tested against CLI 0.4.9 while building a production registration form): added *Known Limitations — Requires Studio UI*; added Rules 8 (verify writes) and 9 (flag placement); documented `registration` vs `rsvp` form types; added *Master Registration Settings*; expanded field types from 7 to 39; completed the Forms command table (`show`, `responses`, `field-types`, `remove-field`, `move-field`, `duplicate`, full `update-field` flags); added Forms gotchas (auto-suffixed labels, public vs internal title, draft URL renders nothing); updated the `--json` note from "broken" to "partial"; added four Diagnostics rows.
+- **Earlier** — Micepad Team: initial skill (v0.4.7).
