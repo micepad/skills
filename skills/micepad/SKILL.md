@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires the Micepad CLI binary (`micepad`) installed and authenticated.
 metadata:
   author: Micepad Team
-  version: 0.4.7
+  version: 0.4.8
   homepage: https://github.com/micepad/skills
 invocable: true
 argument-hint: "[action] [args...]"
@@ -232,13 +232,31 @@ micepad forms unpublish frm_xxx                 # Close registration
 ### Forms
 | Command | Purpose |
 |---------|---------|
-| `micepad forms list` / `fields ID` / `settings ID` | Inspect |
+| `micepad forms list` / `fields ID` / `settings ID` | Inspect; `fields` includes conditional display summary |
 | `micepad forms add-field ID` | `--type`, `--label`, `--required` |
 | `micepad forms update-field ID SLUG` | `--options`, `--placeholder` |
+| `micepad forms field-conditions ID SLUG` | Inspect conditional display rules |
+| `micepad forms set-field-condition ID SLUG` | `--source`, `--operator`, `--value`, `--logic and/or`, `--append` |
+| `micepad forms clear-field-conditions ID SLUG` | Remove conditional display rules |
 | `micepad forms reorder ID` / `update ID` | `--title`, `--subtitle`, `--description`, `--submit_label` |
 | `micepad forms publish ID` / `unpublish ID` / `url ID` | Lifecycle |
 
 **Field types**: `company`, `job_title`, `country`, `dropdown`, `text`, `long_text`, `paragraph`
+
+**Conditional display**: Rules show/hide a target field based on an earlier visible answerable source field. Always run `forms fields` first to get field variables and ordering. Use `field-conditions` before changing existing logic. Examples:
+
+```bash
+micepad forms field-conditions frm_xxx dietary_notes
+micepad forms set-field-condition frm_xxx dietary_notes --source meal_preference --operator equals --value Vegetarian
+micepad forms set-field-condition frm_xxx passport_number --source nationality --operator in --value "Singapore,Malaysia" --logic or --append
+micepad forms clear-field-conditions frm_xxx dietary_notes
+```
+
+Common operators:
+- Text: `equals`, `not_equals`, `empty`, `not_empty`, `contains`, `not_contains`, `starts_with`, `ends_with`
+- Dropdown/radio: `equals`, `not_equals`, `empty`, `not_empty`, `in`, `not_in`
+- Checkbox: `includes_any`, `excludes_any`, `length_equals`, `length_greater_than`, `length_less_than`
+- Number/date: `greater_than`, `less_than`, `between`, `not_between` (date also supports `before`, `after`)
 
 **Important**: Default forms have hidden fields (company_name, job_title). Always `forms fields` first — unhide rather than duplicate.
 
