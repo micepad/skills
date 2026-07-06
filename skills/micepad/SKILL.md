@@ -76,6 +76,7 @@ The CLI cannot do everything. When you hit one of these, don't thrash — send t
 | Paragraph field body text | Paragraph fields render **only** a rich-text block on the public form — their label and instruction are never displayed. The body is edited via Studio's WYSIWYG only | Add and position the paragraph field via CLI; user pastes the text in Studio |
 | Rename system field labels (`first_name`, `last_name`, `email`, `company_name`, `job_title`, `contact_phone`) | Labels are managed by platform i18n and localize per visitor language; `update-field --label` reports success but is a **silent no-op** | For semantic changes (e.g. "Affiliation" instead of "Company"), hide the system field (`--visible false`) and add a custom field instead |
 | Copy a form across events | Forms are event-scoped; `forms duplicate` cannot see forms from other events (`Form not found`) | Rebuild field-by-field via CLI |
+| Conditional field display (skip logic) | The CLI field model is **static `visible` only** — there is no branching/conditional option, and `forms fields --json` always reports `conditions: -`. You cannot express "show field B only if field A = X" | Configure the skip logic in Studio's form builder |
 
 ## Assess Before You Act
 
@@ -275,6 +276,9 @@ Forms live inside a master registration window — individual form open/close da
 - If a field label was ever used elsewhere, the platform may auto-suffix the new field ("Company **2**", variable `company_2`). Check the label after `add-field` and fix with `update-field --label`.
 - `forms update --title` changes the **public** title; the internal form name shown in `forms list` stays unchanged (cosmetic, UI-only rename).
 - After any `add-field`/`update-field`, verify with `forms fields ID` — see Rule 8.
+- `forms remove-field ID VARIABLE` is **interactive** (`Remove "x"? (y/N)`). In a non-interactive shell it silently defaults to N — a no-op that still exits 0 (looks like success, changed nothing). Pipe the confirmation: `printf "y\n" | micepad forms remove-field ID var`. Locked system fields (`email`, `contact_phone`) and any field with existing responses cannot be removed.
+- The remove-field confirmation prompt can print a **neighboring field's label** when the target is a system-derived field (e.g. removing `job_title` shows the custom "Title / Position" field's label) — so blind confirmation risks the appearance of deleting the wrong field. The command still acts on the VARIABLE you named (for a plain user-created field the prompt is correct), but always re-read `forms fields ID` afterward to confirm only the intended field is gone. Prefer hiding system-derived fields (`job_title`, `company_name`) with `--visible false` rather than deleting them.
+- To verify **option text** (radio/dropdown/checkbox), `forms fields --json` is not enough — it returns neither options nor real conditions. Fetch the **published** public form instead: `curl -sL -A "Mozilla/5.0" "https://studio.micepad.co/events/<slug>/registration/<ID>"` (it 302-redirects to `micepad.co`; without `-L`/a User-Agent it returns an empty body). The option strings live in the page's SPA hydration blob and are greppable.
 
 ### Badges
 | Command | Purpose |
@@ -405,5 +409,6 @@ export MICEPAD_URL="ws://localhost:3000/terminal"             # Override via env
 
 ## Changelog
 
+- **2026-07-06 — Gale** (field-tested against CLI 0.4.9 while finalizing the same registration form): added a *Conditional field display (skip logic)* row to Known Limitations (CLI is static `visible` only; `conditions` is always `-`); documented `remove-field` being interactive (silent N default in non-interactive shells) and its confirmation prompt mislabeling system-derived fields (act on the VARIABLE, re-read to confirm, prefer hiding over deleting); added a public-page recipe for verifying option text (`curl -sL -A …`, 302 redirect, hydration blob).
 - **2026-07-05 — Gale** (field-tested against CLI 0.4.9 while building a production registration form): added *Known Limitations — Requires Studio UI*; added Rules 8 (verify writes) and 9 (flag placement); documented `registration` vs `rsvp` form types; added *Master Registration Settings*; expanded field types from 7 to 39; completed the Forms command table (`show`, `responses`, `field-types`, `remove-field`, `move-field`, `duplicate`, full `update-field` flags); added Forms gotchas (auto-suffixed labels, public vs internal title, draft URL renders nothing); updated the `--json` note from "broken" to "partial"; added four Diagnostics rows.
 - **Earlier** — Micepad Team: initial skill (v0.4.7).
